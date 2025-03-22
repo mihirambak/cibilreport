@@ -1,99 +1,58 @@
 import React, { useState, useEffect } from "react";
 
-const ConsentForm = ({ consentUrl, onClose, setCibilData ,panCard}) => {
+const ConsentForm = ({ consentUrl, onConsentApproved }) => {
     useEffect(() => {
         const handleIframeMessage = async (event) => {
             console.log("Received message from iframe:", event.data);
             if (event.data?.status === "SUCCESS") {
-                console.log("Consent form submitted successfully. Fetching CIBIL data...");
-                onClose(); // Close the consent form
-
-                try {
-
-                    const response = await fetch(
-                        "https://apis.ambak.com/central-service/cibil/verifyDirectConsent",
-                        {
-                            method: "POST",
-                            headers: {
-                                "apikey": "AMBAK-CENT-SERVICE-83MPHT-ANIL1990-AMBK",
-                                "cache-control": "no-cache",
-                                "content-type": "application/json"
-                            },
-                            body: JSON.stringify({
-                                pan_card: panCard, // Assuming pan_card comes in event
-                                mobile: "6388740951",
-                                partner_id: "10151",
-                                report_type:
-                                    "report_summary,enquiry_details,loan_accounts,credit_utilization_details,payment_history,payment_history_details,credit_age",
-                            }),
-                        }
-                    );
-
-                    const data = await response.json();
-                    console.log("helllkjfdlkjflkdsjfljslf",panCard)
-                    console.log("Final CIBIL data received:", data);
-                    setCibilData(data); // Update the state with the final CIBIL data
-                } catch (error) {
-                    console.error("Error verifying consent:", error);
-                }
+                console.log("Consent approved. Fetching CIBIL data...");
+                onConsentApproved(); // Call API after consent approval
             }
         };
 
         window.addEventListener("message", handleIframeMessage);
-        return () => {
-            window.removeEventListener("message", handleIframeMessage);
-        };
-    }, [onClose, setCibilData]);
+        return () => window.removeEventListener("message", handleIframeMessage);
+    }, [onConsentApproved]);
 
     return (
-        <div className="ml-6 w-[600px]">
-            <h3 className="text-xl font-semibold">Please Provide Consent</h3>
+        <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-80 z-50">
             <iframe
                 src={consentUrl}
                 title="Consent Form"
-                className="w-[600px] h-[300px] border border-black rounded-md"
+                className="w-full h-full border-none"
             ></iframe>
         </div>
     );
 };
 
 const CIBILReportComponent = () => {
-    const [panCard, setPanCardNo] = useState("");
+    const [panCard, setPanCard] = useState("");
     const [cibilData, setCibilData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [consentUrl, setConsentUrl] = useState("");
 
     const fetchCIBILReport = async () => {
+        setLoading(true);
+        setCibilData(null);
+        setConsentUrl("");
+
         try {
-            setLoading(true);
             console.log("Fetching CIBIL report for PAN:", panCard);
 
-            const response = await fetch(
-                "https://apis.ambak.com/central-service/cibil/getDirectCibil",
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        apiKey: "AMBAK-CENT-SERVICE-83MPHT-ANIL1990-AMBK",
-                    },
-                    body: JSON.stringify({
-                        pan_card: panCard,
-                        mobile: "6388740951",
-                        partner_id: "10151",
-                        partner_name: "Aqib Siddiqui",
-                        user_id: "85",
-                    }),
-                }
-            );
+            const response = await fetch("http://127.0.0.1:7843/getcibilscore", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pan: panCard }),
+            });
 
             const data = await response.json();
             console.log("Response received:", data);
 
-            if (data.status === 200 && data.data?.consign_url) {
-                console.log("Consent URL received, opening consent form...");
-                setConsentUrl(data.data.consign_url);
+            if (data.consentUrl1) {
+                console.log("Opening consent form...");
+                setConsentUrl(data.consentUrl1);
             } else {
-                console.log("CIBIL data received directly:", data);
+                console.log("CIBIL data received:", data);
                 setCibilData(data);
             }
         } catch (error) {
@@ -103,9 +62,29 @@ const CIBILReportComponent = () => {
         }
     };
 
+    const fetchCIBILAfterConsent = async () => {
+        setConsentUrl(""); // Close iframe
+
+        try {
+            console.log("Fetching CIBIL data after consent approval...");
+
+            const response = await fetch("http://127.0.0.1:7843/getcibilscoreafterverification", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pan: panCard }),
+            });
+
+            const data = await response.json();
+            console.log("Final CIBIL data received:", data);
+            setCibilData(data);
+        } catch (error) {
+            console.error("Error verifying consent:", error);
+        }
+    };
+
     return (
-        <div className="flex justify-between items-start p-6">
-            <div className="bg-white shadow-lg rounded p-6 w-96 border border-black rounded-md">
+        <div className="flex flex-col items-center p-6">
+            <div className="bg-white shadow-lg rounded p-6 w-96 border border-black">
                 <h2 className="text-2xl font-bold mb-4">Fetch CIBIL Report</h2>
                 <div className="mb-4">
                     <label className="block text-gray-700">PAN Number:</label>
@@ -113,7 +92,7 @@ const CIBILReportComponent = () => {
                         type="text"
                         placeholder="Enter PAN Number"
                         value={panCard}
-                        onChange={(e) => setPanCardNo(e.target.value)}
+                        onChange={(e) => setPanCard(e.target.value)}
                         className="w-full p-2 border rounded"
                     />
                 </div>
@@ -126,19 +105,12 @@ const CIBILReportComponent = () => {
                 </button>
             </div>
 
-            {/* Render ConsentForm if consentUrl exists */}
-            {consentUrl && (
-                <ConsentForm
-                consentUrl={consentUrl}
-                onClose={() => setConsentUrl("")}
-                setCibilData={setCibilData}
-                panCard={panCard}  
-            />
-            )}
+            {/* Show ConsentForm if consentUrl exists */}
+            {consentUrl && <ConsentForm consentUrl={consentUrl} onConsentApproved={fetchCIBILAfterConsent} />}
 
-            {/* Print CIBIL data when available */}
+            {/* Show CIBIL Data */}
             {cibilData && (
-                <div className="ml-6 p-4 bg-gray-100 border border-gray-300 rounded">
+                <div className="mt-6 p-4 bg-gray-100 border border-gray-300 rounded w-96">
                     <h3 className="text-lg font-semibold">CIBIL Data</h3>
                     <pre className="text-sm text-gray-800">{JSON.stringify(cibilData, null, 2)}</pre>
                 </div>
